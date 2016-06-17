@@ -13,6 +13,7 @@ if [[ -z $( type -p sqlite3 ) ]]; then echo -e "REQUIRED: sqlite3 -- NOT INSTALL
 # Country selection and download
 echo "Enter the Country code (2 chars) you want to import"
 echo "Or leave empty to import ALL countries"
+echo "***WARNING*** Using ALL countries is heavy !"
 read -p "Country to import ? [All] :" country
 case ${country^^} in
   [A-Z][A-Z] ) COUNTRY="${country^^}";;
