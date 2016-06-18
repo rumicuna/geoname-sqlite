@@ -163,12 +163,12 @@ then
   # total=$(ls -l gsplit* | wc -l)
   for f in gsplit*.txt; do
     echo -e "parsing ${B}$f${NC}"
-    sed -i 's/"/""/g' $f
+    sed -i 's/"/""/g;s/[^\t]*/"&"/g' $f
     echo -e ".separator \"\t\"\n.import $f geonames" | sqlite3 geoloc.sqlite
   done
   rm -rf gsplit*.txt
 else
-  sed -i 's/"/""/g' geo_${COUNTRY}.txt
+  sed -i 's/"/""/g;s/[^\t]*/"&"/g' geo_${COUNTRY}.txt
   echo -e ".separator \"\t\"\n.import geo_${COUNTRY}.txt geonames" | sqlite3 geoloc.sqlite
 fi
 
@@ -187,13 +187,13 @@ then
   then
     split -l 100000 --additional-suffix=.txt postal_${COUNTRY}.txt psplit
     for f in psplit*.txt; do
-      sed -i 's/"/""/g' $f
+      sed -i 's/"/""/g;s/[^\t]*/"&"/g' $f
       echo -e "parsing ${B}$f${NC}"
       echo -e ".separator \"\t\"\n.import $f geozip" | sqlite3 geoloc.sqlite
     done
     rm -rf psplit*.txt
   else
-    sed -i 's/"/""/g' postal_${COUNTRY}.txt
+    sed -i 's/"/""/g;s/[^\t]*/"&"/g' postal_${COUNTRY}.txt
     echo -e ".separator \"\t\"\n.import postal_${COUNTRY}.txt geozip" | sqlite3 geoloc.sqlite
   fi
 fi
