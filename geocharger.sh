@@ -3,6 +3,11 @@
 GEONAMES="http://download.geonames.org/export/dump/"
 POSTAL="http://download.geonames.org/export/zip/"
 
+R='\033[0;31m'
+G='\033[0;32m'
+B='\033[0;34m'
+NC='\033[0m'
+
 # Checking that sqlite is here
 if [[ -z $( type -p sqlite3 ) ]]; then echo -e "REQUIRED: sqlite3 -- NOT INSTALLED !";exit ;fi
 
@@ -17,27 +22,65 @@ read -p "Country to import ? [All] : " country
 case ${country^^} in
   [A-Z][A-Z] ) COUNTRY="${country^^}";;
   "" ) COUNTRY="allCountries";;
-  * ) echo "Unrecognized country ${country}"; exit;;
+  * ) echo -e "Unrecognized country ${B}${country}${NC}"; exit;;
 esac
-echo "Trying to load the geolocalisation file..."
-if wget -q -O "${COUNTRY}.zip" "${GEONAMES}${COUNTRY}.zip"
+
+if [ -f geo_${COUNTRY}.txt ]
 then
-  echo "Downloaded ${COUNTRY} geolocalization file"
+  echo -e "${R}Warning${NC}: geo_${COUNTRY}.txt already exists"
+  while true; do
+    read -p "Download it again ? [y/N] : " yn
+    case $yn in
+      [yY] ) dl=yes; break;;
+      [nN] ) dl=no; break;;
+    esac
+  done
 else
-  echo "Unable to find ${COUNTRY}, aborting..."
+  dl=yes
+fi
+if [ $dl = "yes" ]
+then
+  echo "Trying to load the geolocalisation file..."
+  if wget -q -O "${COUNTRY}.zip" "${GEONAMES}${COUNTRY}.zip"
+  then
+    echo "Downloaded ${COUNTRY} geolocalization file"
+  else
+    echo "Unable to find ${COUNTRY}, aborting..."
+    rm -f "${COUNTRY}.zip"
+    exit
+  fi
+
+  echo "Extracting geodatas..."
+  unzip -qq -o "${COUNTRY}.zip" "${COUNTRY}.txt"
+  mv "${COUNTRY}.txt" "geo_${COUNTRY}.txt"
   rm -f "${COUNTRY}.zip"
-  exit
 fi
 
 # If all countries, we'll take the countries info
 if [ ${COUNTRY} = "allCountries" ]
 then
-  echo "We need the country datas too, importing"
-  if ! wget -q -O countryInfo.txt "${GEONAMES}countryInfo.txt"
+  if [ -f countryInfo.txt ]
   then
-    echo "Cannot retrieve the coutries table"
-    rm -f countryInfo.txt
-    exit
+    echo -e "${R}Warning${NC}: countryInfo.txt already exists"
+    while true; do
+      read -p "Download it again ? [y/N] : " yn
+      case $yn in
+        [yY] ) dl=yes; break;;
+        [nN] ) dl=no; break;;
+      esac
+    done
+  else
+    dl=yes
+  fi
+  if [ $dl = yes ]
+  then 
+    echo "We need the country datas too, importing"
+    if ! wget -q -O countryInfo.txt "${GEONAMES}countryInfo.txt"
+    then
+      echo "Cannot retrieve the coutries table"
+      rm -f countryInfo.txt
+      exit
+    fi
   fi
 fi
 
@@ -51,60 +94,87 @@ while true; do
 done
 if [ $withPostal = yes ]
 then
-  echo "Trying to load the postal codes file..."
-  if wget -q -O "postal_${COUNTRY}.zip" "${POSTAL}${COUNTRY}.zip"
+  if [ -f postal_${COUNTRY}.txt ]
   then
-    echo "Downloaded postal_${COUNTRY}"
+    echo -e "${R}Warning${NC}: postal_${COUNTRY}.txt already exists"
+    while true; do
+      read -p "Download it again ? [y/N] : " yn
+      case $yn in
+        [yY] ) dl=yes; break;;
+        [nN] ) dl=no; break;;
+      esac
+    done
   else
-    echo "Unable to find ${COUNTRY}, sorry..."
-    rm -f "postal_${COUNTRY}.zip"
-    withPostal=no
+    dl=yes
   fi
-fi
-
-###############################################
-# Extractions from zip files
-###############################################
-
-echo "Extracting geodatas..."
-unzip -qq -o "${COUNTRY}.zip" "${COUNTRY}.txt"
-mv "${COUNTRY}.txt" "geo_${COUNTRY}.txt"
-rm -f "${COUNTRY}.zip"
-
-if [ $withPostal = yes ]
-then
-  echo "Extracting postal codes..."
-  unzip -qq -o "postal_${COUNTRY}.zip" "${COUNTRY}.txt"
-  mv "${COUNTRY}.txt" "postal_${COUNTRY}.txt"
-  rm -f "postal_${COUNTRY}.zip"
+  if [ $dl = yes ]
+  then
+    echo "Trying to load the postal codes file..."
+    if wget -q -O "postal_${COUNTRY}.zip" "${POSTAL}${COUNTRY}.zip"
+    then
+      echo "Downloaded postal_${COUNTRY}, now extracting"
+	  unzip -qq -o "postal_${COUNTRY}.zip" "${COUNTRY}.txt"
+      mv "${COUNTRY}.txt" "postal_${COUNTRY}.txt"
+      rm -f "postal_${COUNTRY}.zip"
+    else
+      echo "Unable to find ${COUNTRY}, sorry..."
+      rm -f "postal_${COUNTRY}.zip"
+      withPostal=no
+    fi
+  fi
 fi
 
 ###############################################
 # Database creation and filling
 ###############################################
+dba=no
 if [ -f geoloc.sqlite ]
 then
+  echo -e "${R}Warning${NC}: The database file already exists... \c"
+  dba=yes
   while true; do
-    read -p "The database file already exists, overwriting ? [y/N] : " overwrite
+    read -p "overwrite, append or stop ? [O/a/s] : " overwrite
     case $overwrite in
-      [yY] ) rm -rf geoloc.sqlite; break;;
-      [nN] ) echo "Ok, so we leave the process..."; exit;;
+      [oO] ) rm -rf geoloc.sqlite; dba=no; break;;
+      [aA] ) break;;
+      [sS] ) echo "Leaving process..."; exit;;
     esac
   done
 fi
+if [ $dba = no ]
+then
+  echo "Creating database"
+  sqlite3 geoloc.sqlite "create table geonames (geonameid INTEGER PRIMARY KEY, name TEXT, asciiname TEXT, alternatenames TEXT, latitude DECIMAL(10,7), longitude DECIMAL(10,7), fclass TEXT, fcode TEXT, country TEXT, cc2 TEXT, admin1 TEXT, admin2 TEXT, admin3 TEXT, admin4 TEXT, population INTEGER, elevation INTEGER, gtopo30 INTEGER, timezone TEXT, moddate DATETIME);"
+  sqlite3 geoloc.sqlite "create index country on geonames(country);"
+  sqlite3 geoloc.sqlite "create index names on geonames(name, asciiname, alternatenames);"
+  sqlite3 geoloc.sqlite "create table geocountry (iso_alpha2 TEXT PRIMARY KEY, iso_alpha3 TEXT, iso_numeric INTEGER, fips_code TEXT, name TEXT, capital TEXT, areainsqkm REAL, population INTEGER, continent TEXT, tld TEXT, currency TEXT, currencyName TEXT, Phone TEXT, postalCodeFormat TEXT, postalCodeRegex TEXT, geonameId INTEGER, languages TEXT, neighbours TEXT, equivalentFipsCode TEXT);"
+  sqlite3 geoloc.sqlite "create index iso_alpha3 on geocountry(iso_alpha3);"
+  sqlite3 geoloc.sqlite "create table geozip (country TEXT, zipcode TEXT, name TEXT, statename TEXT, statecode TEXT, countyname TEXT, countycode TEXT, communame TEXT, commucode TEXT, latitude DECIMAL(10,7), longitude DECIMAL(10,7), accuracy INTEGER);"
+  sqlite3 geoloc.sqlite "create index zipcode on geozip(zipcode);"
+  sqlite3 geoloc.sqlite "create index zipcountry on geozip(country);"
+  sqlite3 geoloc.sqlite "create index zipnames on geozip(name);"
+fi
 
-echo "Creating and filling geonames table. Please wait"
-sqlite3 geoloc.sqlite "create table geonames (geonameid INTEGER PRIMARY KEY, name TEXT, asciiname TEXT, alternatenames TEXT, latitude DECIMAL(10,7), longitude DECIMAL(10,7), fclass TEXT, fcode TEXT, country TEXT, cc2 TEXT, admin1 TEXT, admin2 TEXT, admin3 TEXT, admin4 TEXT, population INTEGER, elevation INTEGER, gtopo30 INTEGER, timezone TEXT, moddate DATETIME);"
-sqlite3 geoloc.sqlite "create index country on geonames(country);"
-sqlite3 geoloc.sqlite "create index names on geonames(name, asciiname, alternatenames);"
-sed -i 's/"/""/g' geo_${COUNTRY}.txt
-echo -e ".separator \"\t\"\n.import geo_${COUNTRY}.txt geonames" | sqlite3 geoloc.sqlite
+echo -e "Filling geonames table"
+IFS=' ' read l n <<<"$(wc -l geo_${COUNTRY}.txt)"
+if [ $l > 100000 ]
+then
+  split -l 100000 --additional-suffix=.txt geo_${COUNTRY}.txt gsplit
+  # total=$(ls -l gsplit* | wc -l)
+  for f in gsplit*.txt; do
+    echo -e "parsing ${B}$f${NC}"
+    sed -i 's/"/""/g' $f
+    echo -e ".separator \"\t\"\n.import $f geonames" | sqlite3 geoloc.sqlite
+  done
+  rm -rf gsplit*.txt
+else
+  sed -i 's/"/""/g' geo_${COUNTRY}.txt
+  echo -e ".separator \"\t\"\n.import geo_${COUNTRY}.txt geonames" | sqlite3 geoloc.sqlite
+fi
 
 if [ ${COUNTRY} = 'allCountries' ]
 then
   echo "Creating and importing countries informations"
-  sqlite3 geoloc.sqlite "create table geocountry (iso_alpha2 TEXT PRIMARY KEY, iso_alpha3 TEXT, iso_numeric INTEGER, fips_code TEXT, name TEXT, capital TEXT, areainsqkm REAL, population INTEGER, continent TEXT, tld TEXT, currency TEXT, currencyName TEXT, Phone TEXT, postalCodeFormat TEXT, postalCodeRegex TEXT, geonameId INTEGER, languages TEXT, neighbours TEXT, equivalentFipsCode TEXT);"
-  sqlite3 geoloc.sqlite "create index iso_alpha3 on geocountry(iso_alpha3);"
   sed -i '/^#/d' countryInfo.txt
   echo -e ".separator \"\t\"\n.import countryInfo.txt geocountry" | sqlite3 geoloc.sqlite
 fi
@@ -112,12 +182,20 @@ fi
 if [ $withPostal = yes ]
 then
   echo "Creating and filling postal codes. Please wait"
-  sqlite3 geoloc.sqlite "create table geozip (country TEXT, zipcode TEXT, name TEXT, statename TEXT, statecode TEXT, countyname TEXT, countycode TEXT, communame TEXT, commucode TEXT, latitude DECIMAL(10,7), longitude DECIMAL(10,7), accuracy INTEGER);"
-  sqlite3 geoloc.sqlite "create index zipcode on geozip(zipcode);"
-  sqlite3 geoloc.sqlite "create index zipcountry on geozip(country);"
-  sqlite3 geoloc.sqlite "create index zipnames on geozip(name);"
-  sed -i 's/"/""/g' postal_${COUNTRY}.txt
-  echo -e ".separator \"\t\"\n.import postal_${COUNTRY}.txt geozip" | sqlite3 geoloc.sqlite
+  IFS=' ' read l n <<<"$(wc -l postal_${COUNTRY}.txt)"
+  if [ $l > 100000 ]
+  then
+    split -l 100000 --additional-suffix=.txt postal_${COUNTRY}.txt psplit
+    for f in psplit*.txt; do
+      sed -i 's/"/""/g' $f
+      echo -e "parsing ${B}$f${NC}"
+      echo -e ".separator \"\t\"\n.import $f geozip" | sqlite3 geoloc.sqlite
+    done
+    rm -rf psplit*.txt
+  else
+    sed -i 's/"/""/g' postal_${COUNTRY}.txt
+    echo -e ".separator \"\t\"\n.import postal_${COUNTRY}.txt geozip" | sqlite3 geoloc.sqlite
+  fi
 fi
 
 echo "All is filled for $COUNTRY"
@@ -132,4 +210,4 @@ then
   sqlite3 geoloc.sqlite "delete from geonames where fclass<>'P';"
 fi
 
-rm -f *${COUNTRY}* countryInfo.*
+# rm -f *${COUNTRY}* countryInfo.*
