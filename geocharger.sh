@@ -144,7 +144,7 @@ fi
 if [ $dba = no ]
 then
   echo "Creating database"
-  sqlite3 geoloc.sqlite "create table geonames (geonameid INTEGER PRIMARY KEY, name TEXT, asciiname TEXT, alternatenames TEXT, latitude DECIMAL(10,7), longitude DECIMAL(10,7), fclass TEXT, fcode TEXT, country TEXT, cc2 TEXT, admin1 TEXT, admin2 TEXT, admin3 TEXT, admin4 TEXT, population INTEGER, elevation INTEGER, gtopo30 INTEGER, timezone TEXT, moddate DATETIME);"
+  sqlite3 geoloc.sqlite "create table geonames (geonameid INTEGER, name TEXT, asciiname TEXT, alternatenames TEXT, latitude DECIMAL(10,7), longitude DECIMAL(10,7), feature_class TEXT, feature_code TEXT, country TEXT, cc2 TEXT, admin1_code TEXT, admin2_code TEXT, admin3_code TEXT, admin4_code TEXT, population INTEGER, elevation INTEGER, dem INTEGER, timezone TEXT, modification_date TEXT);"
   sqlite3 geoloc.sqlite "create index country on geonames(country);"
   sqlite3 geoloc.sqlite "create index names on geonames(name, asciiname, alternatenames);"
   sqlite3 geoloc.sqlite "create table geocountry (iso_alpha2 TEXT PRIMARY KEY, iso_alpha3 TEXT, iso_numeric INTEGER, fips_code TEXT, name TEXT, capital TEXT, areainsqkm REAL, population INTEGER, continent TEXT, tld TEXT, currency TEXT, currencyName TEXT, Phone TEXT, postalCodeFormat TEXT, postalCodeRegex TEXT, geonameId INTEGER, languages TEXT, neighbours TEXT, equivalentFipsCode TEXT);"
@@ -204,10 +204,10 @@ echo "All is filled for $COUNTRY"
 # Cleaning datas for smaller database ?
 ###############################################
 
-read -p "Type N if you don't want to reduce the geonames to cities " reduce
-if [ "$reduce" != "N" ]
-then
-  sqlite3 geoloc.sqlite "delete from geonames where fclass<>'P';"
-fi
+#read -p "Type N if you don't want to reduce the geonames to cities " reduce
+#if [ "$reduce" != "N" ]
+#then
+#  sqlite3 geoloc.sqlite "delete from geonames where fclass<>'P';"
+#fi
 
 # rm -f *${COUNTRY}* countryInfo.*
